@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+<body>
+    <button onclick="init()">Start</button>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.js" type="text/javascript"></script>
+    <script>
+
+
+        let buffer = [];
+        let playing = false;
+
+        const fps = 40;
+        const fpsInterval = 1000 / fps;
+        let startTime, now, then, elapsed, context, osc;
+
+        const init = () => {
+            console.log("init");
+            //client.subscribe("wemos/esp-18:fe:34:cf:21:91/out");
+            //client.subscribe("wemos/esp-18:fe:34:ce:8f:27/out");
+            client.subscribe("wemos/+/out");
+            // one context per document
+            context = new (window.AudioContext || window.webkitAudioContext)();
+            osc = context.createOscillator(); // instantiate an oscillator
+            osc.type = 'sine'; // this is the default - also square, sawtooth, triangle
+            osc.frequency.value = 440; // Hz
+            osc.connect(context.destination); // connect it to the destination
+        }
+
+
+
+        // Create a client instance
+        // client = new Paho.MQTT.Client("192.168.10.20", 8888, "inetrface1243"); //MOODY-server
+        client = new Paho.MQTT.Client("134.122.18.168", 8888, "inetrface1243"); // DigitalOcean-server
+
+
+        // set callback handlers
+        client.onConnectionLost = onConnectionLost;
+        client.onMessageArrived = onMessageArrived;
+
+        // connect the client
+        client.connect({ onSuccess: onConnect });
+
+
+        // called when the client connects
+        function onConnect() {
+            // Once a connection has been made, make a subscription and send a message.
+            console.log("onConnect");
+            /*message = new Paho.MQTT.Message("Hello");
+            message.destinationName = "World";
+            client.send(message);*/
+        }
+
+        // called when the client loses its connection
+        function onConnectionLost(responseObject) {
+            if (responseObject.errorCode !== 0) {
+                console.log("onConnectionLost:" + responseObject.errorMessage);
+            }
+        }
+
+        // called when a message arrives
+        function onMessageArrived(message) {
+            console.log("onMessageArrived:", message.destinationName);
+            //
+            //
+            //
+            //var sender = message.destinationName.split("/")[1];
+
+            /*
+            string = "wemos/esp-18:fe:34:cf:21:91/out";
+            result = string.match(/([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})/);
+
+            var device_mac = result[0];
+
+            document.write(device_mac)
+            console.log("mac", device_mac)
+            */
+            //
+            //
+            //
+            try {
+                const payloadJSON = JSON.parse(message.payloadString);
+                console.log(payloadJSON.readings);
+                buffer.push(payloadJSON.readings);
+                if (!playing && buffer.length >= 5) {
+                    playing = true;
+                    start_playing();
+                }
+            } catch (e) {
+                console.log("Err decoding", message);
+            }
+            //console.log("onMessageArrived:" + message.payloadString);
+        }
+
+        let current_frame = 0;
+
+        const render = () => {
+
+            // request another frame
+
+            requestAnimationFrame(render);
+
+            // calc elapsed time since last loop
+
+            now = Date.now();
+            elapsed = now - then;
+
+            // if enough time has elapsed, draw the next frame
+
+            if (elapsed > fpsInterval) {
+
+                // Get ready for next frame by setting then=now, but also adjust for your
+                // specified fpsInterval not being a multiple of RAF's interval (16.7ms)
+                then = now - (elapsed % fpsInterval);
+
+                // Put your drawing code here
+
+                const tone = buffer[0][current_frame];
+                console.log("tone", tone)
+                osc.frequency.value = tone / 2;
+                current_frame++;
+                if (current_frame == buffer[0].length) {
+                    current_frame = 0;
+                    buffer.shift();
+                }
+            }
+        }
+
+
+        const start_playing = () => {
+            then = Date.now();
+            startTime = then;
+            render();
+
+
+
+            osc.start(); // start the oscillator
+
+
+
+            // osc.stop();
+
+        }
+
+
+
+
+    </script>
+</body>
+
+</html>
