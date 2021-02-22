@@ -13,12 +13,18 @@
     <script>
 
 
-        let buffer = [];
+        //let buffer = [];
         let playing = false;
 
         const fps = 40;
         const fpsInterval = 1000 / fps;
         let startTime, now, then, elapsed, context, osc;
+
+        let client_current_frame = {};
+        let client_started = {};
+        let client_oscs = {};
+        let client_bufs = {};
+        let client_macs = [];
 
         const init = () => {
             console.log("init");
@@ -27,10 +33,10 @@
             client.subscribe("wemos/+/out");
             // one context per document
             context = new (window.AudioContext || window.webkitAudioContext)();
-            osc = context.createOscillator(); // instantiate an oscillator
-            osc.type = 'sine'; // this is the default - also square, sawtooth, triangle
-            osc.frequency.value = 440; // Hz
-            osc.connect(context.destination); // connect it to the destination
+            // don't create specific osc but dynamically create them when receiving msgs
+            start_playing();
+            // always start playing, check buffer length in play function
+
         }
 
 
@@ -66,39 +72,53 @@
 
         // called when a message arrives
         function onMessageArrived(message) {
-            console.log("onMessageArrived:", message.destinationName);
-            //
-            //
-            //
-            //var sender = message.destinationName.split("/")[1];
 
-            /*
-            string = "wemos/esp-18:fe:34:cf:21:91/out";
-            result = string.match(/([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})/);
 
-            var device_mac = result[0];
+            console.log("onMessageArrived:", message);
 
-            document.write(device_mac)
-            console.log("mac", device_mac)
-            */
-            //
-            //
-            //
             try {
-                const payloadJSON = JSON.parse(message.payloadString);
-                console.log(payloadJSON.readings);
-                buffer.push(payloadJSON.readings);
-                if (!playing && buffer.length >= 5) {
-                    playing = true;
-                    start_playing();
+                const result = message.destinationName.match(/([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})/);
+                const client_mac = result[0];
+
+                console.log("msg from", client_mac);
+
+                if (client_macs.indexOf(client_mac) === -1) {
+                    // first message from this mac
+
+                    // create osc
+                    const tmp_osc = context.createOscillator(); // instantiate an oscillator
+                    tmp_osc.type = 'sine'; // this is the default - also square, sawtooth, triangle
+                    tmp_osc.frequency.value = 440; // Hz
+                    tmp_osc.connect(context.destination); // connect it to the destination
+
+                    // create specific "current_frame", "started", "osc" and "buffer" for each client
+                    client_current_frame[client_mac] = 0;
+                    client_started[client_mac] = false;
+                    client_oscs[client_mac] = tmp_osc;
+                    client_macs.push(client_mac);
+
+                    client_bufs[client_mac] = [];
                 }
+
+                try {
+                    const payloadJSON = JSON.parse(message.payloadString);
+                    console.log(payloadJSON.readings);
+                    // push to correct client buffer
+                    client_bufs[client_mac].push(payloadJSON.readings);
+                    // don't wait for this 1 client to have 5 msg in buffer, because there may be other buffers 
+                } catch (e) {
+                    console.log("Err decoding", message);
+                }
+
+
             } catch (e) {
-                console.log("Err decoding", message);
+                console.log("Could not extract mac", message.destinationName, result);
             }
-            //console.log("onMessageArrived:" + message.payloadString);
+
+
         }
 
-        let current_frame = 0;
+        //let current_frame = 0;
 
         const render = () => {
 
@@ -119,15 +139,39 @@
                 // specified fpsInterval not being a multiple of RAF's interval (16.7ms)
                 then = now - (elapsed % fpsInterval);
 
-                // Put your drawing code here
+                // Put your drawing (read: sound making) code here
 
-                const tone = buffer[0][current_frame];
-                console.log("tone", tone)
-                osc.frequency.value = tone / 2;
-                current_frame++;
-                if (current_frame == buffer[0].length) {
-                    current_frame = 0;
-                    buffer.shift();
+
+                // for each client
+                for (var a = 0; a < client_macs.length; a++) {
+                    try {
+                        const client_mac = client_macs[a];
+
+                        // check if playing, if not maybe it should? (if buffer has 5 chuncks)
+                        if (!client_started[client_mac]) {
+                            if (client_bufs[client_mac].length >= 5) {
+
+                                client_started[client_mac] = true;
+                                // start the osc obj for this client
+                                client_oscs[client_mac].start()
+                            }
+                        }
+
+                        // only when the osc is playing it should be updated, 
+                        // same code as before but with the client specific object instead of the global unque one
+                        if (client_started[client_mac]) {
+                            const tone = client_bufs[client_mac][0][client_current_frame[client_mac]];
+                            console.log("tone", tone)
+                            client_oscs[client_mac].frequency.value = tone / 2;
+                            client_current_frame[client_mac]++;
+                            if (client_current_frame[client_mac] == client_bufs[client_mac][0].length) {
+                                client_current_frame[client_mac] = 0;
+                                client_bufs[client_mac].shift();
+                            }
+                        }
+                    } catch (e) {
+                        console.log("err playing", a, client_macs);
+                    }
                 }
             }
         }
@@ -139,17 +183,14 @@
             render();
 
 
-
-            osc.start(); // start the oscillator
+            // don't start the one, if fixed above in the render function
+            //osc.start(); // start the oscillator
 
 
 
             // osc.stop();
 
         }
-
-
-
 
     </script>
 </body>
