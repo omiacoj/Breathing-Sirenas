@@ -74,10 +74,10 @@
         function onMessageArrived(message) {
 
 
-            console.log("onMessageArrived:", message);
+            console.log("onMessageArrived:", message, message.destinationName);
 
             try {
-                const result = message.destinationName.match(/([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})/);
+                const result = message.destinationName.match(/([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{1,2})/);
                 const client_mac = result[0];
 
                 console.log("msg from", client_mac);
