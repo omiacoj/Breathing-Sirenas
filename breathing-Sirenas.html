@@ -43,7 +43,7 @@
 
         // Create a client instance
         // client = new Paho.MQTT.Client("192.168.10.20", 8888, "inetrface1243"); //MOODY-server
-        client = new Paho.MQTT.Client("134.122.18.168", 8888, "inetrface1243"); // DigitalOcean-server
+        client = new Paho.MQTT.Client("134.122.18.168", 8888, "webclient-" + (new Date()).getTime()); // DigitalOcean-server
 
 
         // set callback handlers
