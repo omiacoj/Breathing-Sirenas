@@ -87,7 +87,7 @@
 
                     // create osc
                     const tmp_osc = context.createOscillator(); // instantiate an oscillator
-                    tmp_osc.type = 'sine'; // this is the default - also square, sawtooth, triangle
+                    tmp_osc.type = 'sawtooth'; // this is the default - also square, sawtooth, triangle
                     tmp_osc.frequency.value = 440; // Hz
                     tmp_osc.connect(context.destination); // connect it to the destination
 
