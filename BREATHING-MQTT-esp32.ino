@@ -24,7 +24,7 @@
 
 const char *ssid = "Accessphone";
 const char *password = "Accessphone";
-const char *mqtt_server = "134.122.18.168";
+const char *mqtt_server = "145.14.158.14";
 const char *topic = "wemos"; // rhis is the [root topic]
 
 long timeBetweenreadings = 25;
