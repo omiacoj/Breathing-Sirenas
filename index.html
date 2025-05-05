@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Breathing Sirenas</title>
+</head>
+<style>
+    .center-button {
+        display: block;
+        margin-left: auto;
+        margin-right: auto;
+        width: 20%;
+        background-color: #ff0000;
+        border-radius: 50%;
+        border: none;
+        color: rgb(0, 0, 0);
+        padding: 15px 32px;
+        text-align: center;
+        text-decoration: none;
+        font-size: 12px;
+        font: Arial;
+        cursor: pointer;
+    }
+
+    .center-button:hover {
+        background-color: #00aa06;
+        color: white;
+    }
+
+
+
+    .center {
+        display: block;
+        margin-left: auto;
+        margin-right: auto;
+        width: 60%;
+    }
+
+    p {
+        text-align: center;
+    }
+</style>
+
+<body>
+    <br>
+    <button onclick="init()" class="center-button">Breathing-Sirenas</button>
+    <br>
+    <img src="Breathing-Sirenas2.jpg" class="center">
+
+    <div class="center">
+        <p>
+            Use a portable battery.</p>
+        <p>
+            Connect it with the breathingmask via micro-usb.</p>
+        <p>
+            Put the breathing-mask on your face.</p>
+        <p>
+            Make a wifi-hotspot on your phone </p>
+        <p>
+            Name it: Accessphone , with the same as password: Accessphone </p>
+        <p>
+            You will be connected with a mqttt-server.</p>
+        <p>
+            There, all frequencies are gathered and used to produce sirena-sounds, </p>
+        <p>
+            converted by different oscillators. </p>
+        <p>
+            Breathing-Sirenas can share all sirenas breathing in the world.</p>
+        <p>
+            <audio controls>
+                <source src="Breathing-Sirenas_two_masks.wav" type="audio/wav">
+                Your browser does not support the audio element.
+            </audio>
+        </p>
+        <p><a href="https://github.com/omiacoj/Breathing-Sirenas">Github Breathing Sirenas</a></p>
+    </div>
+
+
+
+
+
+
+    <img src="Breathing-Sirenas.jpg" class="center">
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.js" type="text/javascript"></script>
+    
+
+
+
+    <script>
+
+
+        //let buffer = [];
+        let playing = false;
+
+        const fps = 40;
+        const fpsInterval = 1000 / fps;
+        let startTime, now, then, elapsed, context, osc;
+
+        let client_current_frame = {};
+        let client_started = {};
+        let client_oscs = {};
+        let client_bufs = {};
+        let client_macs = [];
+
+        const init = () => {
+            console.log("init");
+            //client.subscribe("wemos/esp-18:fe:34:cf:21:91/out");
+            //client.subscribe("wemos/esp-18:fe:34:ce:8f:27/out");
+            client.subscribe("wemos/+/out");
+            // one context per document
+            context = new (window.AudioContext || window.webkitAudioContext)();
+            // don't create specific osc but dynamically create them when receiving msgs
+            start_playing();
+            // always start playing, check buffer length in play function
+
+        }
+
+
+
+        // Create a client instance
+        // client = new Paho.MQTT.Client("192.168.10.20", 8888, "inetrface1243"); //MOODY-server
+        // client = new Paho.MQTT.Client("134.122.18.168", 8888, "webclient-" + (new Date()).getTime()); // DigitalOcean-server
+        //client = new Paho.MQTT.Client("145.14.158.14", 8888, "webclient-" + (new Date()).getTime()); // Hostinger
+        client = new Paho.MQTT.Client("ws.samenschool.org", 443, "/mqtt", "webclient-" + (new Date()).getTime());
+
+        // set callback handlers
+        client.onConnectionLost = onConnectionLost;
+        client.onMessageArrived = onMessageArrived;
+
+        // connect the client
+        client.connect( {
+            onSuccess : onConnect,
+            useSSL: true,
+            cleanSession : false
+        } );
+
+
+        // called when the client connects
+        function onConnect() {
+            // Once a connection has been made, make a subscription and send a message.
+            console.log("onConnect");
+            /*message = new Paho.MQTT.Message("Hello");
+            message.destinationName = "World";
+            client.send(message);*/
+        }
+
+        // called when the client loses its connection
+        function onConnectionLost(responseObject) {
+            if (responseObject.errorCode !== 0) {
+                console.log("onConnectionLost:" + responseObject.errorMessage);
+            }
+        }
+
+        // called when a message arrives
+        function onMessageArrived(message) {
+
+
+            console.log("onMessageArrived:", message, message.destinationName);
+
+            try {
+                const result = message.destinationName.match(/([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{1,2})/);
+                const client_mac = result[0];
+
+                console.log("msg from", client_mac);
+
+                if (client_macs.indexOf(client_mac) === -1) {
+                    // first message from this mac
+
+                    // create osc
+                    const tmp_osc = context.createOscillator(); // instantiate an oscillator
+                    tmp_osc.type = 'sine'; // this is the default - also square, sawtooth, triangle
+                    tmp_osc.frequency.value = 440; // Hz
+                    tmp_osc.connect(context.destination); // connect it to the destination
+
+                    // create specific "current_frame", "started", "osc" and "buffer" for each client
+                    client_current_frame[client_mac] = 0;
+                    client_started[client_mac] = false;
+                    client_oscs[client_mac] = tmp_osc;
+                    client_macs.push(client_mac);
+
+                    client_bufs[client_mac] = [];
+                }
+
+                try {
+                    const payloadJSON = JSON.parse(message.payloadString);
+                    console.log(payloadJSON.readings);
+                    // push to correct client buffer
+                    client_bufs[client_mac].push(payloadJSON.readings);
+                    // don't wait for this 1 client to have 5 msg in buffer, because there may be other buffers 
+                } catch (e) {
+                    console.log("Err decoding", message);
+                }
+
+
+            } catch (e) {
+                console.log("Could not extract mac", message.destinationName, e);
+            }
+
+
+        }
+
+        //let current_frame = 0;
+
+        const render = () => {
+
+            // request another frame
+
+            requestAnimationFrame(render);
+
+            // calc elapsed time since last loop
+
+            now = Date.now();
+            elapsed = now - then;
+
+            // if enough time has elapsed, draw the next frame
+
+            if (elapsed > fpsInterval) {
+
+                // Get ready for next frame by setting then=now, but also adjust for your
+                // specified fpsInterval not being a multiple of RAF's interval (16.7ms)
+                then = now - (elapsed % fpsInterval);
+
+                // Put your drawing (read: sound making) code here
+
+
+                // for each client
+                for (var a = 0; a < client_macs.length; a++) {
+                    try {
+                        const client_mac = client_macs[a];
+
+                        // check if playing, if not maybe it should? (if buffer has 5 chuncks)
+                        if (!client_started[client_mac]) {
+                            if (client_bufs[client_mac].length >= 5) {
+
+                                client_started[client_mac] = true;
+                                // start the osc obj for this client
+                                client_oscs[client_mac].start()
+                            }
+                        }
+
+                        // only when the osc is playing it should be updated, 
+                        // same code as before but with the client specific object instead of the global unque one
+                        if (client_started[client_mac]) {
+                            const tone = client_bufs[client_mac][0][client_current_frame[client_mac]];
+                            console.log("tone", tone)
+                            client_oscs[client_mac].frequency.value = tone / 2;
+                            client_current_frame[client_mac]++;
+                            if (client_current_frame[client_mac] == client_bufs[client_mac][0].length) {
+                                client_current_frame[client_mac] = 0;
+                                client_bufs[client_mac].shift();
+                            }
+                        }
+                    } catch (e) {
+                        console.log("err playing", a, client_macs);
+                    }
+                }
+            }
+        }
+
+
+        const start_playing = () => {
+            then = Date.now();
+            startTime = then;
+            render();
+
+
+            // don't start the one, if fixed above in the render function
+            //osc.start(); // start the oscillator
+
+
+
+            // osc.stop();
+
+        }
+
+    </script>
+</body>
+
+</html>
